@@ -9,7 +9,6 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 !out/**/*.js
-node_modules/**
 CONCEPT.md
 BLUEPRINT.md
 OVERVIEW.md
