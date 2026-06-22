@@ -70,6 +70,20 @@ export class ConfigService {
   }
 
   /**
+   * Get whether PhpStorm sync is enabled
+   */
+  getIdeaSyncEnabled(): boolean {
+    return this.getConfig().get<boolean>(CONFIG.IDEA_SYNC_ENABLED, true);
+  }
+
+  /**
+   * Get PhpStorm sync interval in milliseconds
+   */
+  getIdeaSyncInterval(): number {
+    return this.getConfig().get<number>(CONFIG.IDEA_SYNC_INTERVAL, 1000);
+  }
+
+  /**
    * Listen for configuration changes
    */
   onDidChangeConfiguration(

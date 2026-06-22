@@ -60,6 +60,8 @@ Quick reference table of all available settings:
 | `smartCommit.commitGuard.enabled` | `boolean` | `true` | Global | Warn when staging mixed change lists |
 | `smartCommit.commitGuard.interceptCommit` | `boolean` | `false` | Global | Intercept native commit command |
 | `smartCommit.autoAssignStagedFiles` | `boolean` | `true` | Global | Auto-assign externally staged files |
+| `gitChangeLists.ideaSync.enabled` | `boolean` | `true` | Workspace | Enable PhpStorm bi-directional synchronization |
+| `gitChangeLists.ideaSync.interval` | `integer` | `1000` | Global | Debounce interval (in ms) for PhpStorm sync |
 | `smartCommit.debug.enableLogging` | `boolean` | `true` | Global | Enable verbose debug logging |
 
 ---
@@ -411,6 +413,43 @@ Enables verbose DEBUG-level logging to the "Smart Commit" output channel.
 3. Filter by search if needed
 
 See [DEBUGGING.md](DEBUGGING.md) for more details.
+
+---
+
+### JetBrains / PhpStorm Integration
+
+#### `gitChangeLists.ideaSync.enabled`
+
+**Type:** `boolean`
+**Default:** `true`
+**Scope:** Workspace
+**Restart Required:** No
+
+**Description:**
+Enables bi-directional synchronization of change lists and file mappings with PhpStorm and other JetBrains IDEs via the `.idea/workspace.xml` file.
+
+**When `true`:**
+- Automatically imports change lists and file mappings from PhpStorm on startup and watches the file for changes
+- Periodically checks for external updates using a polling fallback (every 2.5 seconds) to work reliably on WSL/UNC shares
+- Exports local change list state back to `.idea/workspace.xml` when files are moved or lists are updated
+
+**When `false`:**
+- Disables all PhpStorm synchronization features
+
+> [!NOTE]
+> **JetBrains Sync Limitation**: Since JetBrains IDEs keep their change list state in memory and only flush to `.idea/workspace.xml` when the IDE loses focus, during an auto-save, or when explicitly saved, the synchronization from PhpStorm/IntelliJ to VS Code may not always feel real-time. Changes made in VS Code, however, are immediately exported back to PhpStorm.
+
+---
+
+#### `gitChangeLists.ideaSync.interval`
+
+**Type:** `integer`
+**Default:** `1000`
+**Scope:** Global
+**Restart Required:** No
+
+**Description:**
+Debounce interval (in milliseconds) used when exporting local change list changes back to the `.idea/workspace.xml` file. Prevents excessive disk writes during rapid operations.
 
 ---
 

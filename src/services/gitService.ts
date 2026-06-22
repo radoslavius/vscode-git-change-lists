@@ -36,6 +36,7 @@ export class GitService implements vscode.Disposable {
   // Track previously staged files to detect new staging
   private previouslyStagedFiles = new Set<string>();
   private lastKnownHead: string | undefined;
+  private programmaticOperations = new Set<string>();
 
   constructor() {
     this.debouncedEmitChange = debounce(() => {
@@ -174,6 +175,10 @@ export class GitService implements vscode.Disposable {
     const newlyStagedFiles: StagedFileChange[] = [];
     for (const filePath of currentlyStagedFiles) {
       if (!this.previouslyStagedFiles.has(filePath)) {
+        if (this.programmaticOperations.has(filePath)) {
+          this.programmaticOperations.delete(filePath);
+          continue;
+        }
         const change = state.indexChanges.find((c) => c.uri.fsPath === filePath);
         if (change) {
           newlyStagedFiles.push({
@@ -192,12 +197,10 @@ export class GitService implements vscode.Disposable {
       this._onDidStageFiles.fire(newlyStagedFiles);
     }
 
-    this.previouslyStagedFiles = currentlyStagedFiles;
-
-    // Check for commits (HEAD changed)
+    // Check for commits (HEAD changed) BEFORE updating previouslyStagedFiles
     const currentHead = state.HEAD?.commit;
     if (currentHead && currentHead !== this.lastKnownHead && this.lastKnownHead) {
-      // A commit happened - emit the files that were staged before
+      // A commit happened - emit the files that were staged before this change
       const committedFiles = Array.from(this.previouslyStagedFiles);
       logger.debug('GitService: Commit detected', {
         newHead: currentHead.substring(0, 8),
@@ -206,6 +209,8 @@ export class GitService implements vscode.Disposable {
       });
       this._onDidCommit.fire(committedFiles);
     }
+
+    this.previouslyStagedFiles = currentlyStagedFiles;
     this.lastKnownHead = currentHead;
   }
 
@@ -286,19 +291,30 @@ export class GitService implements vscode.Disposable {
     const repoRoot = this.repository.rootUri.fsPath;
     const filePaths = uris.map(u => u.fsPath);
 
+    // Track these as programmatic operations to prevent auto-assignment bounce-back
+    for (const filePath of filePaths) {
+      this.programmaticOperations.add(filePath);
+    }
+
+    // Convert to relative paths with forward slashes for Git consistency
+    const relativePaths = filePaths.map(p => {
+      const rel = path.relative(repoRoot, p);
+      return rel.replace(/\\/g, '/');
+    });
+
     logger.debug('GitService: Staging files via git add', {
-      count: filePaths.length,
+      count: relativePaths.length,
       repoRoot,
-      files: filePaths,
+      files: relativePaths,
     });
 
     // Use git add directly to bypass VS Code Git extension API issues
-    await this.runGitCommand(repoRoot, ['add', '--', ...filePaths]);
+    await this.runGitCommand(repoRoot, ['add', '--', ...relativePaths]);
 
     // Refresh repository state to pick up the changes
     await this.repository.status();
 
-    logger.info('GitService: Files staged successfully', { count: filePaths.length });
+    logger.info('GitService: Files staged successfully', { count: relativePaths.length });
   }
 
   /**
@@ -308,7 +324,8 @@ export class GitService implements vscode.Disposable {
     return new Promise((resolve, reject) => {
       logger.debug('GitService: Running git command', { args, cwd });
 
-      cp.execFile('git', args, { cwd, encoding: 'utf8' }, (error, stdout, stderr) => {
+      const gitPath = vscode.workspace.getConfiguration('git').get<string>('path') || 'git';
+      cp.execFile(gitPath, args, { cwd, encoding: 'utf8' }, (error, stdout, stderr) => {
         if (error) {
           logger.error('GitService: Git command failed', {
             args,
@@ -335,19 +352,30 @@ export class GitService implements vscode.Disposable {
     const repoRoot = this.repository.rootUri.fsPath;
     const filePaths = uris.map(u => u.fsPath);
 
+    // Track these as programmatic operations to prevent auto-assignment bounce-back
+    for (const filePath of filePaths) {
+      this.programmaticOperations.add(filePath);
+    }
+
+    // Convert to relative paths with forward slashes for Git consistency
+    const relativePaths = filePaths.map(p => {
+      const rel = path.relative(repoRoot, p);
+      return rel.replace(/\\/g, '/');
+    });
+
     logger.debug('GitService: Unstaging files via git reset', {
-      count: filePaths.length,
+      count: relativePaths.length,
       repoRoot,
-      files: filePaths,
+      files: relativePaths,
     });
 
     // Use git reset HEAD to unstage files
-    await this.runGitCommand(repoRoot, ['reset', 'HEAD', '--', ...filePaths]);
+    await this.runGitCommand(repoRoot, ['reset', 'HEAD', '--', ...relativePaths]);
 
     // Refresh repository state to pick up the changes
     await this.repository.status();
 
-    logger.info('GitService: Files unstaged successfully', { count: filePaths.length });
+    logger.info('GitService: Files unstaged successfully', { count: relativePaths.length });
   }
 
   /**

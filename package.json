@@ -179,6 +179,13 @@
           "group": "1_move@1"
         }
       ],
+      "scm/resourceState/context": [
+        {
+          "command": "gitChangeLists.moveToList",
+          "when": "scmProvider == git",
+          "group": "inline@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "gitChangeLists.deleteList",
@@ -267,6 +274,16 @@
           "type": "boolean",
           "default": false,
           "description": "Enable debug logging to the output channel (verbose)"
+        },
+        "gitChangeLists.ideaSync.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable bi-directional synchronization of change lists with PhpStorm (.idea/workspace.xml)"
+        },
+        "gitChangeLists.ideaSync.interval": {
+          "type": "integer",
+          "default": 1000,
+          "description": "Debounce interval (in ms) for writing change lists to .idea/workspace.xml"
         }
       }
     }

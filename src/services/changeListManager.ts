@@ -13,7 +13,7 @@ import {
   DEFAULT_LIST_NAME,
   UNVERSIONED_LIST_ID,
 } from '../utils/constants';
-import { generateId, now, getRelativePath } from '../utils/helpers';
+import { generateId, now, getRelativePath, normalizePathKey } from '../utils/helpers';
 import { logger } from '../utils/logger';
 
 /**
@@ -53,9 +53,6 @@ export class ChangeListManager implements vscode.Disposable {
 
     // Ensure default list exists
     this.ensureDefaultList();
-
-    // Clean up file mappings for files that no longer exist in Git
-    await this.cleanupStaleFileMappings();
 
     logger.info('ChangeListManager: Initialized', {
       listCount: this.state.lists.length,
@@ -140,7 +137,7 @@ export class ChangeListManager implements vscode.Disposable {
    */
   private async cleanupStaleFileMappings(): Promise<void> {
     const modifiedFiles = await this.gitService.getModifiedFiles();
-    const modifiedPaths = new Set(modifiedFiles.map((f) => f.uri.fsPath));
+    const modifiedPaths = new Set(modifiedFiles.map((f) => normalizePathKey(f.uri.fsPath)));
 
     const staleFiles: string[] = [];
     for (const filePath of Object.keys(this.state.fileMapping)) {
@@ -356,7 +353,8 @@ export class ChangeListManager implements vscode.Disposable {
    * Get the change list ID for a file
    */
   getListIdForFile(filePath: string): string {
-    return this.state.fileMapping[filePath] ?? this.getDefaultList().id;
+    const key = normalizePathKey(filePath);
+    return this.state.fileMapping[key] ?? this.getDefaultList().id;
   }
 
   /**
@@ -376,7 +374,8 @@ export class ChangeListManager implements vscode.Disposable {
       throw new Error('Change list not found');
     }
 
-    this.state.fileMapping[filePath] = listId;
+    const key = normalizePathKey(filePath);
+    this.state.fileMapping[key] = listId;
     await this.persistState();
     this._onDidChange.fire({ type: 'filesMoved', changeListId: listId, affectedFiles: [filePath] });
   }
@@ -404,7 +403,8 @@ export class ChangeListManager implements vscode.Disposable {
 
         // Remove from file mapping so they fall back to being untracked (which getFilesForList handles)
         for (const filePath of filePaths) {
-          delete this.state.fileMapping[filePath];
+          const key = normalizePathKey(filePath);
+          delete this.state.fileMapping[key];
         }
       } catch (error) {
         logger.error('ChangeListManager: Failed to unstage files', error);
@@ -416,7 +416,8 @@ export class ChangeListManager implements vscode.Disposable {
 
       for (const filePath of filePaths) {
         // Update mapping
-        this.state.fileMapping[filePath] = targetListId;
+        const key = normalizePathKey(filePath);
+        this.state.fileMapping[key] = targetListId;
 
         // Check if file is currently untracked (via git status)
         // We'll need to check the actual status from GitService or assume based on current list
@@ -528,8 +529,59 @@ export class ChangeListManager implements vscode.Disposable {
    */
   async removeFileMappings(filePaths: string[]): Promise<void> {
     for (const filePath of filePaths) {
-      delete this.state.fileMapping[filePath];
+      const key = normalizePathKey(filePath);
+      delete this.state.fileMapping[key];
     }
+    await this.persistState();
+    this._onDidChange.fire({ type: 'refresh' });
+  }
+
+  /**
+   * Import change lists and file mappings from PhpStorm/Idea configuration
+   */
+  async importStateFromIdea(
+    lists: { id: string; name: string; isDefault: boolean }[],
+    fileMapping: Record<string, string>
+  ): Promise<void> {
+    logger.debug('ChangeListManager: Importing state from PhpStorm', {
+      listCount: lists.length,
+      mappingCount: Object.keys(fileMapping).length,
+    });
+
+    const timestamp = now();
+    const updatedLists = lists.map((l) => {
+      const existing = this.state.lists.find((el) => el.id === l.id);
+      return {
+        id: l.id,
+        name: l.name,
+        isDefault: l.isDefault,
+        isActive: existing ? existing.isActive : l.isDefault,
+        createdAt: existing ? existing.createdAt : timestamp,
+        updatedAt: timestamp,
+        description: existing ? existing.description : undefined,
+        color: existing ? existing.color : undefined,
+      };
+    });
+
+    // Ensure at least one list is active
+    if (!updatedLists.some((l) => l.isActive)) {
+      const defaultList = updatedLists.find((l) => l.isDefault);
+      if (defaultList) {
+        defaultList.isActive = true;
+      } else if (updatedLists.length > 0) {
+        updatedLists[0].isActive = true;
+      }
+    }
+
+    this.state.lists = updatedLists;
+    
+    // Normalize mapping keys
+    const normalizedMapping: Record<string, string> = {};
+    for (const [filePath, listId] of Object.entries(fileMapping)) {
+      normalizedMapping[normalizePathKey(filePath)] = listId;
+    }
+    this.state.fileMapping = normalizedMapping;
+
     await this.persistState();
     this._onDidChange.fire({ type: 'refresh' });
   }

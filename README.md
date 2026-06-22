@@ -44,6 +44,7 @@ Git Change Lists transforms how you organize Git changes by introducing **change
 - ✓ **Commit Guard** - Warns when staging files from multiple lists
 - ✓ **Git Integration** - Works seamlessly with VS Code's built-in Git
 - ✓ **Status Bar Integration** - See your active list at a glance
+- ✓ **JetBrains / PhpStorm Sync** - Bi-directional synchronization of change lists with `.idea/workspace.xml`
 - ✓ **Multi-Editor Support** - Works on VS Code, Cursor, Kiro, Windsurf, Trae, VSCodium, and Antigravity
 
 ---
@@ -75,6 +76,9 @@ If you're a WebStorm, IntelliJ IDEA, or PHPStorm user who's had to switch to VS 
 - Active list concept with auto-assignment
 - Default list that captures unassigned changes
 - Staging-based workflow that integrates with VS Code's native Git
+
+> [!NOTE]
+> **JetBrains Sync Limitation**: Since JetBrains IDEs keep their change list state in memory and only flush to `.idea/workspace.xml` when the IDE loses focus, during an auto-save, or when explicitly saved, the synchronization from PhpStorm/IntelliJ to VS Code may not always feel real-time. Changes made in VS Code, however, are immediately exported back to PhpStorm.
 
 ---
 
@@ -315,6 +319,8 @@ Git Change Lists can be configured via **File → Preferences → Settings** or 
 | `gitChangeLists.commitGuard.enabled` | `boolean` | `true` | Warn when committing files from multiple lists |
 | `gitChangeLists.commitGuard.interceptCommit` | `boolean` | `false` | Intercept native commit command (requires restart) |
 | `gitChangeLists.autoAssignStagedFiles` | `boolean` | `true` | Auto-assign externally staged files to active list |
+| `gitChangeLists.ideaSync.enabled` | `boolean` | `true` | Enable bi-directional synchronization of change lists with PhpStorm (`.idea/workspace.xml`) |
+| `gitChangeLists.ideaSync.interval` | `integer` | `1000` | Debounce interval (in ms) for writing change lists back to PhpStorm |
 | `gitChangeLists.debug.enableLogging` | `boolean` | `false` | Enable verbose debug logging to output channel |
 
 ### Example Configuration
@@ -326,6 +332,8 @@ Git Change Lists can be configured via **File → Preferences → Settings** or 
   "gitChangeLists.autoActivateNew": true,
   "gitChangeLists.commitGuard.enabled": true,
   "gitChangeLists.autoAssignStagedFiles": true,
+  "gitChangeLists.ideaSync.enabled": true,
+  "gitChangeLists.ideaSync.interval": 1000,
   "gitChangeLists.debug.enableLogging": false
 }
 ```

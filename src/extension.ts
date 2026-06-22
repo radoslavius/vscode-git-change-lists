@@ -9,6 +9,7 @@ import { ChangeListDragDropController } from './providers/dragDropController';
 import { registerCommands } from './commands';
 import { VIEW_ID } from './utils/constants';
 import { logger } from './utils/logger';
+import { IdeaSyncService } from './services/ideaSyncService';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Register logger output channel
@@ -88,11 +89,58 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     commitGuardService.initialize();
     logger.info('Commit guard service initialized');
 
+    // Initialize PhpStorm sync service
+    logger.debug('Initializing PhpStorm sync service...');
+    const ideaSyncService = new IdeaSyncService(
+      changeListManager,
+      gitService,
+      configService
+    );
+    await ideaSyncService.initialize();
+
+    // Create and integrate Status Bar Item
+    logger.debug('Creating status bar item...');
+    let statusBarItem: vscode.StatusBarItem | undefined;
+
+    const updateStatusBar = () => {
+      if (!configService.getShowStatusBar() || !gitService.hasRepository()) {
+        if (statusBarItem) {
+          statusBarItem.hide();
+        }
+        return;
+      }
+
+      const activeList = changeListManager.getActiveList();
+      if (!activeList) {
+        if (statusBarItem) {
+          statusBarItem.hide();
+        }
+        return;
+      }
+
+      if (!statusBarItem) {
+        statusBarItem = vscode.window.createStatusBarItem(
+          vscode.StatusBarAlignment.Left,
+          100
+        );
+        statusBarItem.command = 'gitChangeLists.setActiveList';
+        context.subscriptions.push(statusBarItem);
+      }
+
+      statusBarItem.text = `$(git-branch) Change List: ${activeList.name}`;
+      statusBarItem.tooltip = `Active Change List: ${activeList.name}\nClick to switch active change list`;
+      statusBarItem.show();
+    };
+
+    // Update status bar initially
+    updateStatusBar();
+
     // Subscribe to Git state changes
     logger.debug('Setting up event listeners...');
     gitService.onDidChangeState(() => {
       logger.event('Git', 'State changed');
       treeDataProvider.refresh();
+      updateStatusBar();
     });
 
     // Subscribe to externally staged files (auto-assignment)
@@ -148,6 +196,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     changeListManager.onDidChange((event) => {
       logger.event('ChangeList', 'State changed', event);
       treeDataProvider.refresh();
+      updateStatusBar();
     });
 
     // Subscribe to configuration changes
@@ -161,6 +210,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       treeDataProvider.refresh();
+      updateStatusBar();
     });
 
     // Add services to subscriptions for cleanup
@@ -168,7 +218,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       changeListManager,
       gitService,
       commitGuardService,
-      treeDataProvider
+      treeDataProvider,
+      ideaSyncService
     );
 
     logger.info('Git Change Lists extension activated successfully!');

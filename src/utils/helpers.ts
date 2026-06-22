@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { v4 as uuidv4 } from 'uuid';
+import { UNVERSIONED_LIST_ID } from './constants';
 
 /**
  * Generate a new UUID v4
@@ -22,7 +23,10 @@ export function getRelativePath(uri: vscode.Uri, workspaceRoot: vscode.Uri): str
   const rootPath = workspaceRoot.fsPath;
   const filePath = uri.fsPath;
 
-  if (filePath.startsWith(rootPath)) {
+  const normalizedRoot = rootPath.replace(/\\/g, '/').toLowerCase();
+  const normalizedFile = filePath.replace(/\\/g, '/').toLowerCase();
+
+  if (normalizedFile.startsWith(normalizedRoot)) {
     let relative = filePath.substring(rootPath.length);
     // Remove leading separator
     if (relative.startsWith('/') || relative.startsWith('\\')) {
@@ -39,6 +43,13 @@ export function getRelativePath(uri: vscode.Uri, workspaceRoot: vscode.Uri): str
  */
 export function normalizePath(path: string): string {
   return path.replace(/\\/g, '/');
+}
+
+/**
+ * Normalize path for use as a map key (lowercase, forward slashes)
+ */
+export function normalizePathKey(filePath: string): string {
+  return filePath.replace(/\\/g, '/').toLowerCase();
 }
 
 /**
@@ -111,10 +122,17 @@ export function groupBy<T, K extends string | number>(
 /**
  * Sort change lists with Default first, then active, then by name
  */
-export function sortChangeLists<T extends { isDefault: boolean; isActive: boolean; name: string }>(
+export function sortChangeLists<T extends { id?: string; isDefault: boolean; isActive: boolean; name: string }>(
   lists: T[]
 ): T[] {
   return [...lists].sort((a, b) => {
+    // Unversioned Files list always at the very end
+    const aIsUnversioned = a.id === UNVERSIONED_LIST_ID;
+    const bIsUnversioned = b.id === UNVERSIONED_LIST_ID;
+    if (aIsUnversioned !== bIsUnversioned) {
+      return aIsUnversioned ? 1 : -1;
+    }
+
     // Default list always first
     if (a.isDefault !== b.isDefault) {
       return a.isDefault ? -1 : 1;

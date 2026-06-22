@@ -229,10 +229,23 @@ export function registerCommands(
       if (nodes && nodes.length > 0) {
         // Multi-selection
         filesToMove = nodes
-          .filter((n): n is FileNode => n.type === 'file')
-          .map((n) => n.change.resourceUri.fsPath);
-      } else if (node && node.type === 'file') {
-        filesToMove = [node.change.resourceUri.fsPath];
+          .map((n: any) => {
+            if (n && n.type === 'file' && n.change && n.change.resourceUri) {
+              return n.change.resourceUri.fsPath;
+            }
+            if (n && n.resourceUri) {
+              return n.resourceUri.fsPath;
+            }
+            return '';
+          })
+          .filter(Boolean);
+      } else if (node) {
+        const anyNode = node as any;
+        if (anyNode.type === 'file' && anyNode.change && anyNode.change.resourceUri) {
+          filesToMove = [anyNode.change.resourceUri.fsPath];
+        } else if (anyNode.resourceUri) {
+          filesToMove = [anyNode.resourceUri.fsPath];
+        }
       }
 
       if (filesToMove.length === 0) {

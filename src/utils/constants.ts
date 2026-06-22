@@ -36,6 +36,8 @@ export const CONFIG = {
   INTERCEPT_COMMIT: 'commitGuard.interceptCommit',
   AUTO_ASSIGN_STAGED: 'autoAssignStagedFiles',
   DEBUG_LOGGING: 'debug.enableLogging',
+  IDEA_SYNC_ENABLED: 'ideaSync.enabled',
+  IDEA_SYNC_INTERVAL: 'ideaSync.interval',
 } as const;
 
 /** Storage keys */
