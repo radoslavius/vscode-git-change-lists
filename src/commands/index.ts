@@ -222,29 +222,30 @@ export function registerCommands(
 
   // Move to Change List
   disposables.push(
-    vscode.commands.registerCommand(COMMANDS.MOVE_TO_LIST, async (node?: FileNode, nodes?: FileNode[]) => {
+    vscode.commands.registerCommand(COMMANDS.MOVE_TO_LIST, async (node?: unknown, nodes?: unknown[]) => {
       // Get selected files
       let filesToMove: string[] = [];
 
       if (nodes && nodes.length > 0) {
         // Multi-selection
         filesToMove = nodes
-          .map((n: any) => {
-            if (n && n.type === 'file' && n.change && n.change.resourceUri) {
-              return n.change.resourceUri.fsPath;
+          .map((n) => {
+            const item = n as { type?: string; change?: { resourceUri?: vscode.Uri }; resourceUri?: vscode.Uri };
+            if (item && item.type === 'file' && item.change?.resourceUri) {
+              return item.change.resourceUri.fsPath;
             }
-            if (n && n.resourceUri) {
-              return n.resourceUri.fsPath;
+            if (item && item.resourceUri) {
+              return item.resourceUri.fsPath;
             }
             return '';
           })
           .filter(Boolean);
       } else if (node) {
-        const anyNode = node as any;
-        if (anyNode.type === 'file' && anyNode.change && anyNode.change.resourceUri) {
-          filesToMove = [anyNode.change.resourceUri.fsPath];
-        } else if (anyNode.resourceUri) {
-          filesToMove = [anyNode.resourceUri.fsPath];
+        const item = node as { type?: string; change?: { resourceUri?: vscode.Uri }; resourceUri?: vscode.Uri };
+        if (item.type === 'file' && item.change?.resourceUri) {
+          filesToMove = [item.change.resourceUri.fsPath];
+        } else if (item.resourceUri) {
+          filesToMove = [item.resourceUri.fsPath];
         }
       }
 

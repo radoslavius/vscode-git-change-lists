@@ -18,6 +18,7 @@ export class IdeaSyncService implements vscode.Disposable {
   private writeDebounceTimeout: NodeJS.Timeout | undefined;
   private pollInterval: NodeJS.Timeout | undefined;
   private lastMtime = 0;
+  private readTimeout: NodeJS.Timeout | undefined;
 
   constructor(
     private readonly changeListManager: ChangeListManager,
@@ -67,15 +68,21 @@ export class IdeaSyncService implements vscode.Disposable {
           logger.info('IdeaSyncService: Ignored file change event (internal write)');
           return;
         }
-        logger.info('IdeaSyncService: External change to workspace.xml detected via watcher, importing in 100ms...');
-        setTimeout(async () => {
+        logger.info('IdeaSyncService: External change to workspace.xml detected via watcher, scheduling import...');
+        if (this.readTimeout) {
+          clearTimeout(this.readTimeout);
+        }
+        this.readTimeout = setTimeout(async () => {
           await this.importFromIdea();
         }, 100);
       }),
       this.fileWatcher.onDidCreate(async () => {
         if (this.isWriting) return;
-        logger.info('IdeaSyncService: workspace.xml created via watcher, importing in 100ms...');
-        setTimeout(async () => {
+        logger.info('IdeaSyncService: workspace.xml created via watcher, scheduling import...');
+        if (this.readTimeout) {
+          clearTimeout(this.readTimeout);
+        }
+        this.readTimeout = setTimeout(async () => {
           await this.importFromIdea();
         }, 100);
       })
@@ -142,8 +149,18 @@ export class IdeaSyncService implements vscode.Disposable {
 
         if (!idMatch || !nameMatch) continue;
 
-        const id = idMatch[1];
-        const name = nameMatch[1];
+        const id = idMatch[1]
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'");
+        const name = nameMatch[1]
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'");
         const isDefault = defaultMatch ? defaultMatch[1] === 'true' : false;
 
         parsedLists.push({ id, name, isDefault });
@@ -160,12 +177,13 @@ export class IdeaSyncService implements vscode.Disposable {
                             changeAttrs.match(/afterPath="\$PROJECT_DIR\$?\/(.*?)"/);
 
           if (pathMatch) {
-            const relativePath = pathMatch[1];
-            // Combine workspace root and relative path in a platform-independent way
-            const normalizedRoot = workspaceRoot.replace(/\\/g, '/');
-            const absolutePath = normalizedRoot.endsWith('/')
-              ? normalizedRoot + relativePath
-              : normalizedRoot + '/' + relativePath;
+            const relativePath = pathMatch[1]
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&quot;/g, '"')
+              .replace(/&apos;/g, "'");
+            const absolutePath = path.join(workspaceRoot, relativePath);
             fileMapping[normalizePathKey(absolutePath)] = id;
           }
         }
@@ -251,19 +269,32 @@ export class IdeaSyncService implements vscode.Disposable {
     const lists = this.changeListManager.getLists().filter(l => !l.isReadOnly);
     const xmlLines: string[] = [];
 
+    const escapeXml = (unsafe: string) => unsafe.replace(/[<>&'"]/g, (c) => {
+      switch (c) {
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '&': return '&amp;';
+        case '\'': return '&apos;';
+        case '"': return '&quot;';
+        default: return c;
+      }
+    });
+
     xmlLines.push('  <component name="ChangeListManager">');
 
     for (const list of lists) {
       const defaultAttr = list.isDefault ? ' default="true"' : '';
       const files = await this.changeListManager.getFilesForList(list.id);
+      const escapedId = escapeXml(list.id);
+      const escapedName = escapeXml(list.name);
 
       if (files.length === 0) {
-        xmlLines.push(`    <list${defaultAttr} id="${list.id}" name="${list.name}" comment="" />`);
+        xmlLines.push(`    <list${defaultAttr} id="${escapedId}" name="${escapedName}" comment="" />`);
       } else {
-        xmlLines.push(`    <list${defaultAttr} id="${list.id}" name="${list.name}" comment="">`);
+        xmlLines.push(`    <list${defaultAttr} id="${escapedId}" name="${escapedName}" comment="">`);
         for (const file of files) {
           // JetBrains uses forward slashes in relative paths
-          const relPath = file.relativePath.replace(/\\/g, '/');
+          const relPath = escapeXml(file.relativePath.replace(/\\/g, '/'));
           xmlLines.push(`      <change beforePath="$PROJECT_DIR$/${relPath}" beforeDir="false" afterPath="$PROJECT_DIR$/${relPath}" afterDir="false" />`);
         }
         xmlLines.push('    </list>');
@@ -281,6 +312,9 @@ export class IdeaSyncService implements vscode.Disposable {
   }
 
   dispose(): void {
+    if (this.readTimeout) {
+      clearTimeout(this.readTimeout);
+    }
     if (this.writeDebounceTimeout) {
       clearTimeout(this.writeDebounceTimeout);
     }
